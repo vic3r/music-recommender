@@ -19,3 +19,10 @@ type SearchByIDRequest struct {
 	K      int               `json:"k,omitempty"`
 	Filter map[string]string `json:"filter,omitempty"`
 }
+
+// ImportRequest is the HTTP request body for saga: import tracks from Spotify + optionally find similar.
+type ImportRequest struct {
+	TrackIDs     []string `json:"track_ids"`               // Spotify track IDs to import
+	FindSimilarTo string  `json:"find_similar_to,omitempty"` // "first" or Spotify track ID; if set, returns similar after import
+	K            int      `json:"k,omitempty"`             // number of similar tracks to return (default 10)
+}

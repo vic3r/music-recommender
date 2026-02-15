@@ -23,6 +23,13 @@ type SongResponse struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
+// ImportResponse is the response from the import saga.
+type ImportResponse struct {
+	Imported []string            `json:"imported"` // IDs of successfully imported songs (Spotify IDs)
+	Failed   []string            `json:"failed,omitempty"` // IDs that failed to import
+	Similar  []SearchResultItem  `json:"similar,omitempty"` // Similar tracks if find_similar_to was set
+}
+
 // ErrorResponse is the JSON error payload.
 type ErrorResponse struct {
 	Error string `json:"error"`

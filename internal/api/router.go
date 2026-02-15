@@ -14,6 +14,7 @@ func Router(h *Handler) http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/songs", h.HandleInsert)
+		r.Post("/songs/import", h.HandleImport)
 		r.Post("/songs/search", h.HandleSearch)
 		r.Post("/songs/search/by-id", h.HandleSearchByID)
 		r.Get("/songs/{id}", h.HandleGet)

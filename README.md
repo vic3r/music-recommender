@@ -46,6 +46,7 @@ The API listens on `http://localhost:8080`.
 |--------|----------|-------------|
 | GET | `/health` | Health check |
 | POST | `/api/v1/songs` | Insert a song with embedding |
+| POST | `/api/v1/songs/import` | **Saga**: Import from Spotify (via Rust) + optionally find similar |
 | POST | `/api/v1/songs/search` | Search by embedding |
 | POST | `/api/v1/songs/search/by-id` | Search similar to a song by ID |
 | GET | `/api/v1/songs/{id}` | Get song metadata |
@@ -88,12 +89,31 @@ curl -X POST http://localhost:8080/api/v1/songs/search/by-id \
 curl -X DELETE http://localhost:8080/api/v1/songs/{id}
 ```
 
+### Import from Spotify (saga)
+
+Requires `SPOTIFY_SEARCH_URL` (Rust service) and `EMBEDDING_DIM=12` (Spotify audio features).
+
+```bash
+# Import tracks and find similar to first imported
+curl -X POST http://localhost:8080/api/v1/songs/import \
+  -H "Content-Type: application/json" \
+  -d '{
+    "track_ids": ["0VjIjW4GlUZAMYd2vXMi3b", "5QO79kh1waicV47BqGRL3g"],
+    "find_similar_to": "first",
+    "k": 5
+  }'
+```
+
+**Saga flow:** Go → Rust (GET tracks with audio features) → Insert into vector store → Optionally search similar.
+
 ## Configuration
 
 | Env Var | Default | Description |
 |---------|---------|-------------|
 | `PORT` | `8080` | HTTP port |
-| `EMBEDDING_DIM` | `128` | Embedding vector dimension |
+| `EMBEDDING_DIM` | `12` | Embedding dimension (12 for Spotify audio features) |
+| `SPOTIFY_GRPC_TARGET` | - | gRPC target for Rust service (e.g. localhost:50051). Preferred over HTTP. |
+| `SPOTIFY_SEARCH_URL` | - | HTTP URL for Rust (fallback if SPOTIFY_GRPC_TARGET not set) |
 
 ## Roadmap
 

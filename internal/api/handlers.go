@@ -120,6 +120,89 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleImport saga: fetch tracks with embeddings from Rust service, insert into store, optionally find similar.
+func (h *Handler) HandleImport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if h.spotifyFetcher == nil {
+		respondError(w, http.StatusServiceUnavailable, "spotify search service not configured (set SPOTIFY_SEARCH_URL)")
+		return
+	}
+
+	var req dto.ImportRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if len(req.TrackIDs) == 0 {
+		respondError(w, http.StatusBadRequest, "track_ids is required and cannot be empty")
+		return
+	}
+
+	// Saga step 1: Call Rust to get tracks with embeddings
+	tracksResp, err := h.spotifyFetcher.GetTracksWithFeatures(req.TrackIDs)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, "failed to fetch from spotify service: "+err.Error())
+		return
+	}
+
+	k := req.K
+	if k <= 0 {
+		k = 10
+	}
+
+	var imported []string
+	var failed []string
+	var similar []dto.SearchResultItem
+	var similarToID string
+
+	// Saga step 2: Insert tracks with embeddings
+	for _, t := range tracksResp.Tracks {
+		if len(t.Embedding) == 0 {
+			failed = append(failed, t.ID)
+			continue
+		}
+		_, err := h.repo.InsertWithID(t.ID, t.Embedding, t.Metadata)
+		if err != nil {
+			failed = append(failed, t.ID)
+			// Compensation: delete already-inserted tracks (rollback)
+			for _, id := range imported {
+				h.repo.Delete(id)
+			}
+			respondError(w, http.StatusInternalServerError, "import failed at "+t.ID+": "+err.Error())
+			return
+		}
+		imported = append(imported, t.ID)
+	}
+
+	// Saga step 3: Optionally find similar
+	if req.FindSimilarTo != "" {
+		if req.FindSimilarTo == "first" && len(imported) > 0 {
+			similarToID = imported[0]
+		} else if req.FindSimilarTo != "first" {
+			similarToID = req.FindSimilarTo
+		}
+	}
+	if similarToID != "" {
+		song, ok := h.repo.Get(similarToID)
+		if ok {
+			params := buildSearchParams(song.Embedding, k+1, nil)
+			results, err := h.repo.Search(params)
+			if err == nil {
+				similar = excludeAndLimit(results, similarToID, k)
+			}
+		}
+	}
+
+	respondJSON(w, http.StatusOK, dto.ImportResponse{
+		Imported: imported,
+		Failed:   failed,
+		Similar:  similar,
+	})
+}
+
 // HandleHealth returns service health.
 func HandleHealth(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]any{"status": "ok"})
